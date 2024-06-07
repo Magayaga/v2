@@ -4,7 +4,7 @@
 
 ## Example code
 
-**Generate any static configuration format** — Define all your data in `v2`, and generate output for `JSON`, `YAML`, and other configuration formats.
+**Generate any static configuration format** — Define all your data in `v2`, and generate output for `JSON`, `YAML`, and other configuration formats. It resembled the [**Apple Pkl**](https://pkl-lang.org).
 
 Example of `name.v2`:
 ```
