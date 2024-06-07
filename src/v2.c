@@ -38,7 +38,9 @@ ConfigItem *createConfigItem(const char *key, const char *value) {
             fprintf(stderr, "Memory allocation failed\n");
             return NULL;
         }
-    } else {
+    }
+    
+    else {
         item->value = NULL;
     }
     item->next = NULL;
@@ -50,7 +52,9 @@ ConfigItem *createConfigItem(const char *key, const char *value) {
 void addChild(ConfigItem *parent, ConfigItem *child) {
     if (!parent->child) {
         parent->child = child;
-    } else {
+    }
+    
+    else {
         ConfigItem *sibling = parent->child;
         while (sibling->next) {
             sibling = sibling->next;
@@ -97,7 +101,9 @@ ConfigItem *parseV2Config(const char *filename) {
                 return NULL;
             }
             addChild(current, item);
-        } else if (sscanf(line, " %127[^{] {", key) == 1) {
+        }
+        
+        else if (sscanf(line, " %127[^{] {", key) == 1) {
             ConfigItem *item = createConfigItem(key, NULL);
             if (!item) {
                 fclose(file);
@@ -107,7 +113,9 @@ ConfigItem *parseV2Config(const char *filename) {
             addChild(current, item);
             stack[stackIndex++] = current;
             current = item;
-        } else if (strstr(line, "}")) {
+        }
+        
+        else if (strstr(line, "}")) {
             current = stack[--stackIndex];
         }
     }
@@ -177,7 +185,9 @@ void serializeJSON(ConfigItem *item, FILE *file) {
 
         if (child->child) {
             serializeJSON(child, file);
-        } else {
+        }
+        
+        else {
             if (child->value) {
                 escapeJSONString(child->value, escapedValue);
                 fprintf(file, "\"%s\"", escapedValue);
@@ -199,7 +209,9 @@ void serializeYAML(ConfigItem *item, FILE *file, int indent) {
         for (int i = 0; i < indent; ++i) fprintf(file, "  ");
         if (child->value) {
             fprintf(file, "%s: %s\n", child->key, child->value);
-        } else {
+        }
+        
+        else {
             fprintf(file, "%s:\n", child->key);
             serializeYAML(child, file, indent + 1);
         }
@@ -213,7 +225,9 @@ void changeFileExtension(const char *input, char *output, const char *newExt) {
     char *dot = strrchr(output, '.');
     if (dot) {
         strcpy(dot, newExt);
-    } else {
+    }
+    
+    else {
         strcat(output, newExt);
     }
 }
@@ -243,7 +257,9 @@ int main(int argc, char *argv[]) {
         if (jsonFile) {
             serializeJSON(config, jsonFile);
             fclose(jsonFile);
-        } else {
+        }
+        
+        else {
             fprintf(stderr, "Failed to open file %s for writing\n", jsonFilename);
         }
 
@@ -252,7 +268,9 @@ int main(int argc, char *argv[]) {
         if (yamlFile) {
             serializeYAML(config, yamlFile, 0);
             fclose(yamlFile);
-        } else {
+        }
+        
+        else {
             fprintf(stderr, "Failed to open file %s for writing\n", yamlFilename);
         }
 
