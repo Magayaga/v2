@@ -235,9 +235,31 @@ void changeFileExtension(const char *input, char *output, const char *newExt) {
 // Main function to process multiple .v2 files
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <file1.v2> <file2.v2> ...\n", argv[0]);
+        fprintf(stderr, "Usage: %s [filename] ...\n", argv[0]);
         return 1;
     }
+
+    else if (argc == 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0)) {
+        printf("%s [v1.0.0]\n", argv[0]);
+        return 0;
+    }
+
+    else if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
+        printf("Usage: %s [filename]\n\n", argv[0]);
+        printf("Options\n");
+        printf("   -h, --help                 Display this information.\n");
+        printf("   -v, --version              Display compiler version information.\n");
+        printf("   --author                   Display the author information.\n");
+        printf("\nFor bug reporting instructions, please see:\n");
+        printf("[https://github.com/magayaga/v2]\n");
+        return 0;
+    }
+
+    else if (argc == 2 && (strcmp(argv[1], "--author") == 0)) {
+        printf("Copyright (c) 2024 Cyril John Magayaga\n");
+        return 0;
+    }
+
 
     for (int i = 1; i < argc; ++i) {
         ConfigItem *config = parseV2Config(argv[i]);
