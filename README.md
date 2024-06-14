@@ -13,7 +13,7 @@ $ gcc src/v2.c -o v2
 To run code in a file non-interactively, you can give it as the first argument to the `v2` command:
 
 ```bash
-./v2 name.v2
+./v2 examples/name.v2
 ```
 
 ## Example code
