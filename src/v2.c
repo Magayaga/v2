@@ -65,11 +65,13 @@ void addChild(ConfigItem *parent, ConfigItem *child) {
 
 // Function to free a ConfigItem
 void freeConfigItem(ConfigItem *item) {
-    if (item->key) free(item->key);
-    if (item->value) free(item->value);
-    if (item->child) freeConfigItem(item->child);
-    if (item->next) freeConfigItem(item->next);
-    free(item);
+    if (item) {
+        if (item->key) free(item->key);
+        if (item->value) free(item->value);
+        if (item->child) freeConfigItem(item->child);
+        if (item->next) freeConfigItem(item->next);
+        free(item);
+    }
 }
 
 // Function to parse a .v2 configuration file
@@ -92,6 +94,9 @@ ConfigItem *parseV2Config(const char *filename) {
 
     char line[256];
     while (fgets(line, sizeof(line), file)) {
+        // Skip comments and empty lines
+        if (line[0] == '#' || line[0] == '\n') continue;
+
         char key[128], value[128];
         if (sscanf(line, " %127[^=]=%127[^\n]", key, value) == 2) {
             ConfigItem *item = createConfigItem(key, value);
@@ -116,7 +121,16 @@ ConfigItem *parseV2Config(const char *filename) {
         }
         
         else if (strstr(line, "}")) {
-            current = stack[--stackIndex];
+            if (stackIndex > 0) {
+                current = stack[--stackIndex];
+            }
+            
+            else {
+                fprintf(stderr, "Syntax error: Unmatched closing brace\n");
+                fclose(file);
+                freeConfigItem(root);
+                return NULL;
+            }
         }
     }
 
@@ -191,7 +205,9 @@ void serializeJSON(ConfigItem *item, FILE *file) {
             if (child->value) {
                 escapeJSONString(child->value, escapedValue);
                 fprintf(file, "\"%s\"", escapedValue);
-            } else {
+            }
+            
+            else {
                 fprintf(file, "null");
             }
         }
@@ -260,7 +276,6 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
-
     for (int i = 1; i < argc; ++i) {
         ConfigItem *config = parseV2Config(argv[i]);
         if (!config) {
@@ -268,8 +283,17 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        char jsonFilename[256];
-        char yamlFilename[256];
+        // Allocate buffer for filenames based on input length
+        size_t len = strlen(argv[i]) + 6; // 5 for ".json" or ".yaml" + 1 for null terminator
+        char *jsonFilename = (char *)malloc(len);
+        char *yamlFilename = (char *)malloc(len);
+        if (!jsonFilename || !yamlFilename) {
+            fprintf(stderr, "Memory allocation failed\n");
+            free(jsonFilename);
+            free(yamlFilename);
+            freeConfigItem(config);
+            return 1;
+        }
 
         changeFileExtension(argv[i], jsonFilename, ".json");
         changeFileExtension(argv[i], yamlFilename, ".yaml");
@@ -297,6 +321,8 @@ int main(int argc, char *argv[]) {
         }
 
         // Clean up
+        free(jsonFilename);
+        free(yamlFilename);
         freeConfigItem(config);
     }
 
