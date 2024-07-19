@@ -199,9 +199,7 @@ void serializeJSON(ConfigItem *item, FILE *file) {
 
         if (child->child) {
             serializeJSON(child, file);
-        }
-        
-        else {
+        } else {
             if (child->value) {
                 escapeJSONString(child->value, escapedValue);
                 fprintf(file, "\"%s\"", escapedValue);
@@ -248,81 +246,134 @@ void changeFileExtension(const char *input, char *output, const char *newExt) {
     }
 }
 
+// Function to interpret the configuration file
+void interpretConfig(ConfigItem *item, int indent) {
+    if (!item) return;
+
+    ConfigItem *child = item->child;
+    while (child) {
+        for (int i = 0; i < indent; ++i) printf("  ");
+        if (child->value) {
+            printf("%s = %s\n", child->key, child->value);
+        }
+        
+        else {
+            printf("%s:\n", child->key);
+            interpretConfig(child, indent + 1);
+        }
+        child = child->next;
+    }
+}
+
 // Main function to process multiple .v2 files
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s [filename] ...\n", argv[0]);
+        fprintf(stderr, "Usage: %s [options] [filename] ...\n", argv[0]);
         return 1;
     }
 
-    else if (argc == 2 && (strcmp(argv[1], "--version") == 0 || strcmp(argv[1], "-v") == 0)) {
-        printf("%s [v1.0.0]\n", argv[0]);
-        return 0;
-    }
-
-    else if (argc == 2 && (strcmp(argv[1], "--help") == 0 || strcmp(argv[1], "-h") == 0)) {
-        printf("Usage: %s [filename]\n\n", argv[0]);
-        printf("Options\n");
-        printf("   -h, --help                 Display this information.\n");
-        printf("   -v, --version              Display compiler version information.\n");
-        printf("   --author                   Display the author information.\n");
-        printf("\nFor bug reporting instructions, please see:\n");
-        printf("[https://github.com/magayaga/v2]\n");
-        return 0;
-    }
-
-    else if (argc == 2 && (strcmp(argv[1], "--author") == 0)) {
-        printf("Copyright (c) 2024 Cyril John Magayaga\n");
-        return 0;
-    }
+    int transpileJSON = 0;
+    int transpileYAML = 0;
+    int loadAndInterpret = 0;
+    char *loadFilename = NULL;
 
     for (int i = 1; i < argc; ++i) {
-        ConfigItem *config = parseV2Config(argv[i]);
-        if (!config) {
-            fprintf(stderr, "Failed to parse %s\n", argv[i]);
-            continue;
+        if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
+            printf("%s [v1.0.0]\n", argv[0]);
+            return 0;
         }
+        
+        else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
+            printf("Usage: %s [options] [filename]\n\n", argv[0]);
+            printf("Options\n");
+            printf("   -h, --help                 Display this information.\n");
+            printf("   -v, --version              Display compiler version information.\n");
+            printf("   --author                   Display the author information.\n");
+            printf("   --transpiler::json         Transpile to JSON format.\n");
+            printf("   --transpiler::yaml         Transpile to YAML format.\n");
+            printf("   --load [filename]          Load and interpret the .v2 file.\n");
+            printf("\nFor bug reporting instructions, please see:\n");
+            printf("[https://github.com/magayaga/v2]\n");
+            return 0;
+        }
+        
+        else if (strcmp(argv[i], "--author") == 0) {
+            printf("Copyright (c) 2024 Cyril John Magayaga\n");
+            return 0;
+        }
+        
+        else if (strcmp(argv[i], "--transpiler::json") == 0) {
+            transpileJSON = 1;
+        }
+        
+        else if (strcmp(argv[i], "--transpiler::yaml") == 0) {
+            transpileYAML = 1;
+        }
+        
+        else if (strcmp(argv[i], "--load") == 0) {
+            if (i + 1 < argc) {
+                loadAndInterpret = 1;
+                loadFilename = argv[++i];
+            }
+            
+            else {
+                fprintf(stderr, "Error: --load option requires a filename\n");
+                return 1;
+            }
+        }
+        
+        else {
+            ConfigItem *config = parseV2Config(argv[i]);
+            if (!config) {
+                fprintf(stderr, "Failed to parse %s\n", argv[i]);
+                continue;
+            }
 
-        // Allocate buffer for filenames based on input length
-        size_t len = strlen(argv[i]) + 6; // 5 for ".json" or ".yaml" + 1 for null terminator
-        char *jsonFilename = (char *)malloc(len);
-        char *yamlFilename = (char *)malloc(len);
-        if (!jsonFilename || !yamlFilename) {
-            fprintf(stderr, "Memory allocation failed\n");
-            free(jsonFilename);
-            free(yamlFilename);
+            char jsonFilename[256];
+            char yamlFilename[256];
+
+            // Serialize to JSON
+            if (transpileJSON) {
+                changeFileExtension(argv[i], jsonFilename, ".json");
+                FILE *jsonFile = fopen(jsonFilename, "w");
+                if (jsonFile) {
+                    serializeJSON(config, jsonFile);
+                    fclose(jsonFile);
+                    printf("Transpiled to JSON: %s\n", jsonFilename);
+                }
+                
+                else {
+                    fprintf(stderr, "Failed to open file %s for writing\n", jsonFilename);
+                }
+            }
+
+            // Serialize to YAML
+            if (transpileYAML) {
+                changeFileExtension(argv[i], yamlFilename, ".yaml");
+                FILE *yamlFile = fopen(yamlFilename, "w");
+                if (yamlFile) {
+                    serializeYAML(config, yamlFile, 0);
+                    fclose(yamlFile);
+                    printf("Transpiled to YAML: %s\n", yamlFilename);
+                }
+                
+                else {
+                    fprintf(stderr, "Failed to open file %s for writing\n", yamlFilename);
+                }
+            }
+
             freeConfigItem(config);
+        }
+    }
+
+    if (loadAndInterpret && loadFilename) {
+        ConfigItem *config = parseV2Config(loadFilename);
+        if (!config) {
+            fprintf(stderr, "Failed to load %s\n", loadFilename);
             return 1;
         }
-
-        changeFileExtension(argv[i], jsonFilename, ".json");
-        changeFileExtension(argv[i], yamlFilename, ".yaml");
-
-        // Serialize to JSON
-        FILE *jsonFile = fopen(jsonFilename, "w");
-        if (jsonFile) {
-            serializeJSON(config, jsonFile);
-            fclose(jsonFile);
-        }
-        
-        else {
-            fprintf(stderr, "Failed to open file %s for writing\n", jsonFilename);
-        }
-
-        // Serialize to YAML
-        FILE *yamlFile = fopen(yamlFilename, "w");
-        if (yamlFile) {
-            serializeYAML(config, yamlFile, 0);
-            fclose(yamlFile);
-        }
-        
-        else {
-            fprintf(stderr, "Failed to open file %s for writing\n", yamlFilename);
-        }
-
-        // Clean up
-        free(jsonFilename);
-        free(yamlFilename);
+        printf("Interpreting %s:\n", loadFilename);
+        interpretConfig(config, 0);
         freeConfigItem(config);
     }
 
