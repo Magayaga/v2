@@ -39,7 +39,16 @@ death {
 
 ### Scripting language
 
+```
+#v2/scripting
 
+@compiler = [python, lua, ruby]
+@filename = [py, lua, rb]
+
+defn main(@compiler, @filename):
+    *create_main = createfile.system("main", "print(\"Hello, World\"")
+    os.system("{$compiler} {*create_main}.{$filename}")
+```
 
 ## Copyright
 
