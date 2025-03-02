@@ -1,9 +1,9 @@
 # `v2`
 
-`v2` (also known as **Villamer and Valencia** or **volume-velocity**) is a programming language designed specifically for configuration created and developed by [Cyril John Magayaga](https://github.com/magayaga). It was written in C programming language and can be **application settings**, **user preferences**, **data analysis**, and **more**. It was available for the **Windows**, **Linux**, and **macOS** operating systems.
+`v2` (also known as **Valencia-Villamer**) is a programming language designed specifically for configuration created and developed by [Cyril John Magayaga](https://github.com/magayaga). It was written in C programming language and can be **application settings**, **user preferences**, **data analysis**, and **more**. Adding **Python** replaced **C** programming language. It was available for the **Windows**, **Linux**, and **macOS** operating systems.
 
 ## Getting Start
-You can download the `GCC` compiler (version 9 or above) or `Clang` compiler (version 12 or above) for the **Windows**, **Linux**, and **macOS** operating systems. Then, Build and run the application. 
+You can download the GCC compiler (version 9 or above) or Clang compiler (version 12 or above) for the **Windows**, **Linux**, and **macOS** operating systems. Then, Build and run the application. 
 
 ```bash
 # Windows, Linux, or macOS
@@ -20,7 +20,7 @@ To run code in a file non-interactively, you can give it as the first argument t
 
 ### Configuration
 
-**Generate any static configuration format** — Define all your data in `v2`, and generate output for `JSON`, `YAML`, and other configuration formats. It resembled the [**Apple Pkl**](https://pkl-lang.org).
+**Generate any static configuration format**—Define all your data in `v2` and generate output for `JSON`, `YAML`, and other configuration formats. It resembled the [**Apple Pkl**](https://pkl-lang.org).
 
 Example of `name.v2`:
 ```
@@ -52,4 +52,4 @@ defn main(@compiler, @filename):
 
 ## Copyright
 
-Copyright (c) 2024 Cyril John Magayaga.
+Copyright (c) 2024-2025 Cyril John Magayaga.
