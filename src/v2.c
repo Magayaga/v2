@@ -1,8 +1,8 @@
 /*
  *
- * V2 - VILLAMER AND VALENCIA
+ * V2, ALSO KNOWN AS "VALENCIA-VILLAMER"
  * This is a configuration as code language with powerful tooling.
- * Copyright (c) 2024 Cyril John Magayaga
+ * Copyright (c) 2024-2025 Cyril John Magayaga
  * 
  */
 #include <stdio.h>
@@ -139,79 +139,96 @@ ConfigItem *parseV2Config(const char *filename) {
 }
 
 // Function to escape JSON strings
+// Escape JSON strings properly
 void escapeJSONString(const char *input, char *output) {
     while (*input) {
         switch (*input) {
-            case '"':
-                *output++ = '\\';
-                *output++ = '"';
-                break;
-            case '\\':
-                *output++ = '\\';
-                *output++ = '\\';
-                break;
-            case '\b':
-                *output++ = '\\';
-                *output++ = 'b';
-                break;
-            case '\f':
-                *output++ = '\\';
-                *output++ = 'f';
-                break;
-            case '\n':
-                *output++ = '\\';
-                *output++ = 'n';
-                break;
-            case '\r':
-                *output++ = '\\';
-                *output++ = 'r';
-                break;
-            case '\t':
-                *output++ = '\\';
-                *output++ = 't';
-                break;
-            default:
-                *output++ = *input;
-                break;
+            case '"': *output++ = '\\'; *output++ = '"'; break;
+            case '\\': *output++ = '\\'; *output++ = '\\'; break;
+            case '\b': *output++ = '\\'; *output++ = 'b'; break;
+            case '\f': *output++ = '\\'; *output++ = 'f'; break;
+            case '\n': *output++ = '\\'; *output++ = 'n'; break;
+            case '\r': *output++ = '\\'; *output++ = 'r'; break;
+            case '\t': *output++ = '\\'; *output++ = 't'; break;
+            default: *output++ = *input; break;
         }
         input++;
     }
     *output = '\0';
 }
 
-// Function to serialize a ConfigItem to JSON
+// Count how many times a key appears in siblings
+int countSameKey(ConfigItem *start, const char *key) {
+    int count = 0;
+    while (start) {
+        if (strcmp(start->key, key) == 0) count++;
+        start = start->next;
+    }
+    return count;
+}
+
+// JSON serialization (children only)
 void serializeJSON(ConfigItem *item, FILE *file) {
     if (!item || !item->child) return;
 
     ConfigItem *child = item->child;
     fprintf(file, "{");
-    int first = 1;  // Flag to check if it is the first element
+    int first = 1;
+
     while (child) {
-        if (!first) {
-            fprintf(file, ",");
-        }
+        int keyCount = countSameKey(child, child->key);
+        if (!first) fprintf(file, ",");
         first = 0;
 
-        // Escape key and value
-        char escapedKey[256], escapedValue[256];
+        char escapedKey[256];
         escapeJSONString(child->key, escapedKey);
-        fprintf(file, "\"%s\": ", escapedKey);
 
+        if (keyCount > 1) {
+            fprintf(file, "\"%s\": [", escapedKey);
+            int arrayFirst = 1;
+
+            // Write each item with the same key
+            while (child && strcmp(child->key, escapedKey) == 0) {
+                if (!arrayFirst) fprintf(file, ",");
+                arrayFirst = 0;
+
+                if (child->child) {
+                    serializeJSON(child, file);
+                } else if (child->value) {
+                    char escapedValue[256];
+                    escapeJSONString(child->value, escapedValue);
+                    fprintf(file, "\"%s\"", escapedValue);
+                } else {
+                    fprintf(file, "null");
+                }
+
+                child = child->next;
+            }
+            fprintf(file, "]");
+            continue; // Skip increment below
+        }
+
+        // Single value
+        fprintf(file, "\"%s\": ", escapedKey);
         if (child->child) {
             serializeJSON(child, file);
+        } else if (child->value) {
+            char escapedValue[256];
+            escapeJSONString(child->value, escapedValue);
+            fprintf(file, "\"%s\"", escapedValue);
         } else {
-            if (child->value) {
-                escapeJSONString(child->value, escapedValue);
-                fprintf(file, "\"%s\"", escapedValue);
-            }
-            
-            else {
-                fprintf(file, "null");
-            }
+            fprintf(file, "null");
         }
+
         child = child->next;
     }
     fprintf(file, "}");
+}
+
+// JSON serialization including top-level object
+void serializeJSONRoot(ConfigItem *item, FILE *file) {
+    if (!item) return;
+    serializeJSON(item, file);
 }
 
 // Function to serialize a ConfigItem to YAML
