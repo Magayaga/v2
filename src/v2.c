@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 // Define the basic data structure for a configuration item
 typedef struct ConfigItem {
@@ -99,6 +100,12 @@ ConfigItem *parseV2Config(const char *filename) {
 
         char key[128], value[128];
         if (sscanf(line, " %127[^=]=%127[^\n]", key, value) == 2) {
+            // Trim trailing whitespace from key
+            char *end = key + strlen(key) - 1;
+            while (end > key && isspace((unsigned char)*end)) {
+                *end-- = '\0';
+            }
+            
             ConfigItem *item = createConfigItem(key, value);
             if (!item) {
                 fclose(file);
@@ -109,6 +116,12 @@ ConfigItem *parseV2Config(const char *filename) {
         }
         
         else if (sscanf(line, " %127[^{] {", key) == 1) {
+            // Trim trailing whitespace from key
+            char *end = key + strlen(key) - 1;
+            while (end > key && isspace((unsigned char)*end)) {
+                *end-- = '\0';
+            }
+            
             ConfigItem *item = createConfigItem(key, NULL);
             if (!item) {
                 fclose(file);
@@ -139,22 +152,60 @@ ConfigItem *parseV2Config(const char *filename) {
 }
 
 // Function to escape JSON strings
-// Escape JSON strings properly
-void escapeJSONString(const char *input, char *output) {
-    while (*input) {
+void escapeJSONString(const char *input, char *output, size_t outSize) {
+    size_t outIndex = 0;
+    
+    while (*input && outIndex < outSize - 1) {
         switch (*input) {
-            case '"': *output++ = '\\'; *output++ = '"'; break;
-            case '\\': *output++ = '\\'; *output++ = '\\'; break;
-            case '\b': *output++ = '\\'; *output++ = 'b'; break;
-            case '\f': *output++ = '\\'; *output++ = 'f'; break;
-            case '\n': *output++ = '\\'; *output++ = 'n'; break;
-            case '\r': *output++ = '\\'; *output++ = 'r'; break;
-            case '\t': *output++ = '\\'; *output++ = 't'; break;
-            default: *output++ = *input; break;
+            case '"': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = '"'; 
+                }
+                break;
+            case '\\': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = '\\'; 
+                }
+                break;
+            case '\b': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = 'b'; 
+                }
+                break;
+            case '\f': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = 'f'; 
+                }
+                break;
+            case '\n': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = 'n'; 
+                }
+                break;
+            case '\r': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = 'r'; 
+                }
+                break;
+            case '\t': 
+                if (outIndex + 2 < outSize) {
+                    output[outIndex++] = '\\'; 
+                    output[outIndex++] = 't'; 
+                }
+                break;
+            default: 
+                output[outIndex++] = *input; 
+                break;
         }
         input++;
     }
-    *output = '\0';
+    output[outIndex] = '\0';
 }
 
 // Count how many times a key appears in siblings
@@ -167,68 +218,345 @@ int countSameKey(ConfigItem *start, const char *key) {
     return count;
 }
 
-// JSON serialization (children only)
-void serializeJSON(ConfigItem *item, FILE *file) {
-    if (!item || !item->child) return;
-
-    ConfigItem *child = item->child;
-    fprintf(file, "{");
-    int first = 1;
-
-    while (child) {
-        int keyCount = countSameKey(child, child->key);
-        if (!first) fprintf(file, ",");
-        first = 0;
-
-        char escapedKey[256];
-        escapeJSONString(child->key, escapedKey);
-
-        if (keyCount > 1) {
-            fprintf(file, "\"%s\": [", escapedKey);
-            int arrayFirst = 1;
-
-            // Write each item with the same key
-            while (child && strcmp(child->key, escapedKey) == 0) {
-                if (!arrayFirst) fprintf(file, ",");
-                arrayFirst = 0;
-
-                if (child->child) {
-                    serializeJSON(child, file);
-                } else if (child->value) {
-                    char escapedValue[256];
-                    escapeJSONString(child->value, escapedValue);
-                    fprintf(file, "\"%s\"", escapedValue);
-                } else {
-                    fprintf(file, "null");
-                }
-
-                child = child->next;
-            }
-            fprintf(file, "]");
-            continue; // Skip increment below
-        }
-
-        // Single value
-        fprintf(file, "\"%s\": ", escapedKey);
-        if (child->child) {
-            serializeJSON(child, file);
-        } else if (child->value) {
-            char escapedValue[256];
-            escapeJSONString(child->value, escapedValue);
-            fprintf(file, "\"%s\"", escapedValue);
-        } else {
-            fprintf(file, "null");
-        }
-
-        child = child->next;
-    }
-    fprintf(file, "}");
+// Safely write a key or value to JSON
+void writeJSONString(FILE *file, const char *str) {
+    char escaped[512]; // Increased buffer size for safety
+    escapeJSONString(str, escaped, sizeof(escaped));
+    fprintf(file, "\"%s\"", escaped);
 }
 
-// JSON serialization including top-level object
-void serializeJSONRoot(ConfigItem *item, FILE *file) {
-    if (!item) return;
-    serializeJSON(item, file);
+// Function to determine value type for JSON
+int isNumeric(const char *str) {
+    if (!str) return 0;
+    char *endptr;
+    strtod(str, &endptr);
+    return *endptr == '\0';
+}
+
+int isBoolean(const char *str) {
+    if (!str) return 0;
+    return (strcmp(str, "true") == 0 || strcmp(str, "false") == 0);
+}
+
+int isNull(const char *str) {
+    if (!str) return 1;
+    return (strcmp(str, "null") == 0);
+}
+
+// JSON serialization (children only) with proper formatting
+void serializeJSON(ConfigItem *item, FILE *file, int indent, int checkDesign) {
+    if (!item || !item->child) {
+        fprintf(file, "{}");
+        return;
+    }
+
+    ConfigItem *child = item->child;
+    fprintf(file, "{\n");
+    int first = 1;
+
+    // Calculate indentation
+    char indentStr[128] = "";
+    for (int i = 0; i < indent + 1; i++) {
+        strcat(indentStr, "    ");
+    }
+
+    while (child) {
+        if (!first) fprintf(file, ",\n");
+        first = 0;
+
+        // Print indentation
+        fprintf(file, "%s", indentStr);
+        
+        char escapedKey[256];
+        escapeJSONString(child->key, escapedKey, sizeof(escapedKey));
+        
+        int keyCount = countSameKey(item->child, child->key);
+        int seenCount = 0;
+        ConfigItem *temp = item->child;
+        while (temp != child) {
+            if (strcmp(temp->key, child->key) == 0) seenCount++;
+            temp = temp->next;
+        }
+
+        // Write the key
+        fprintf(file, "\"%s\": ", escapedKey);
+
+        // Handle arrays (multiple elements with same key)
+        if (keyCount > 1 && seenCount == 0) {
+            fprintf(file, "[\n%s    ", indentStr);
+            int arrayFirst = 1;
+            
+            // Find all siblings with the same key
+            ConfigItem *sibling = child;
+            while (sibling && seenCount < keyCount) {
+                if (strcmp(sibling->key, child->key) == 0) {
+                    if (!arrayFirst) fprintf(file, ",\n%s    ", indentStr);
+                    arrayFirst = 0;
+                    
+                    if (sibling->child) {
+                        serializeJSON(sibling, file, indent + 1, checkDesign);
+                    }
+                    
+                    else if (sibling->value) {
+                        if (checkDesign) {
+                            // Intelligent value type detection for better JSON design
+                            if (isNumeric(sibling->value)) {
+                                fprintf(file, "%s", sibling->value);
+                            }
+                            
+                            else if (isBoolean(sibling->value)) {
+                                fprintf(file, "%s", sibling->value);
+                            }
+                            
+                            else if (isNull(sibling->value)) {
+                                fprintf(file, "null");
+                            }
+                            
+                            else {
+                                writeJSONString(file, sibling->value);
+                            }
+                        }
+                        
+                        else {
+                            writeJSONString(file, sibling->value);
+                        }
+                    }
+                    
+                    else {
+                        fprintf(file, "null");
+                    }
+                    seenCount++;
+                }
+                if (seenCount < keyCount) sibling = sibling->next;
+            }
+            
+            fprintf(file, "\n%s]", indentStr);
+            
+            // Skip all processed items
+            while (child && seenCount > 0) {
+                if (strcmp(child->key, escapedKey) == 0) seenCount--;
+                if (seenCount > 0) child = child->next;
+            }
+        }
+        
+        else {
+            // Handle single value
+            if (child->child) {
+                serializeJSON(child, file, indent + 1, checkDesign);
+            }
+            
+            else if (child->value) {
+                if (checkDesign) {
+                    // Intelligent value type detection for better JSON design
+                    if (isNumeric(child->value)) {
+                        fprintf(file, "%s", child->value);
+                    }
+                    
+                    else if (isBoolean(child->value)) {
+                        fprintf(file, "%s", child->value);
+                    }
+                    
+                    else if (isNull(child->value)) {
+                        fprintf(file, "null");
+                    }
+                    
+                    else {
+                        writeJSONString(file, child->value);
+                    }
+                }
+                
+                else {
+                    writeJSONString(file, child->value);
+                }
+            }
+            
+            else {
+                fprintf(file, "null");
+            }
+            child = child->next;
+        }
+    }
+    
+    // Close the object with proper indentation
+    char closeIndentStr[128] = "";
+    for (int i = 0; i < indent; i++) {
+        strcat(closeIndentStr, "    ");
+    }
+    fprintf(file, "\n%s}", closeIndentStr);
+}
+
+// Function to validate JSON structure
+int checkDesignJSON(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "Failed to open file %s for validation\n", filename);
+        return 0;
+    }
+    
+    // Simple validation: check for balanced braces
+    int braceCount = 0;
+    int bracketCount = 0;
+    int inString = 0;
+    int escape = 0;
+    int error = 0;
+    int c;
+    
+    while ((c = fgetc(file)) != EOF && !error) {
+        if (escape) {
+            escape = 0;
+            continue;
+        }
+        
+        if (c == '\\' && inString) {
+            escape = 1;
+            continue;
+        }
+        
+        if (c == '"' && !escape) {
+            inString = !inString;
+            continue;
+        }
+        
+        if (!inString) {
+            if (c == '{') braceCount++;
+            else if (c == '}') braceCount--;
+            else if (c == '[') bracketCount++;
+            else if (c == ']') bracketCount--;
+            
+            if (braceCount < 0 || bracketCount < 0) {
+                error = 1;
+                fprintf(stderr, "Error: Unbalanced braces or brackets in JSON\n");
+            }
+        }
+    }
+    
+    fclose(file);
+    
+    if (!error && (braceCount != 0 || bracketCount != 0)) {
+        fprintf(stderr, "Error: Unbalanced braces or brackets in JSON\n");
+        error = 1;
+    }
+    
+    return !error;
+}
+
+// Function to validate YAML structure
+int checkDesignYAML(const char *filename) {
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        fprintf(stderr, "Failed to open file %s for validation\n", filename);
+        return 0;
+    }
+    
+    int error = 0;
+    int lineNum = 0;
+    char line[512];
+    int indentLevels[100] = {0}; // Track indentation at each level
+    int currentLevel = 0;
+    int inMultilineString = 0;
+    char stringDelimiter = 0; // ' or " for string delimiters
+    
+    // Check for common YAML errors
+    while (fgets(line, sizeof(line), file) && !error) {
+        lineNum++;
+        
+        // Skip empty lines and comments
+        if (line[0] == '\n' || line[0] == '#') continue;
+        
+        // Handle multiline strings
+        if (inMultilineString) {
+            for (char *p = line; *p; p++) {
+                if (*p == '\\' && *(p+1) == stringDelimiter) {
+                    p++; // Skip the escaped quote
+                    continue;
+                }
+                if (*p == stringDelimiter) {
+                    inMultilineString = 0;
+                    break;
+                }
+            }
+            continue;
+        }
+        
+        // Count leading spaces for indentation
+        int indent = 0;
+        char *p = line;
+        while (*p == ' ') {
+            indent++;
+            p++;
+        }
+        
+        // Check for tab characters (not allowed in YAML)
+        if (strchr(line, '\t') != NULL) {
+            fprintf(stderr, "Error at line %d: Tab characters are not allowed in YAML\n", lineNum);
+            error = 1;
+            break;
+        }
+        
+        // Check for strings that might need quoting
+        if (strchr(line, ':') != NULL) {
+            char *key = line;
+            while (*key && *key != ':') key++;
+            
+            if (*key == ':' && *(key+1) != '\0' && *(key+1) != '\n') {
+                // Skip whitespace after colon
+                char *value = key + 1;
+                while (*value == ' ') value++;
+                
+                // Check if we're entering a multiline string
+                if (*value == '"' || *value == '\'') {
+                    stringDelimiter = *value;
+                    char *endQuote = strchr(value + 1, stringDelimiter);
+                    if (!endQuote || *(endQuote-1) == '\\') {
+                        inMultilineString = 1;
+                    }
+                }
+                
+                // Check for common illegal characters in unquoted values
+                if (*value != '"' && *value != '\'' && 
+                    (strchr(value, '{') || strchr(value, '}') || 
+                     strchr(value, '[') || strchr(value, ']') ||
+                     strchr(value, '&') || strchr(value, '*'))) {
+                    fprintf(stderr, "Warning at line %d: Value may need quotes: %s", lineNum, value);
+                }
+            }
+        }
+        
+        // Check indentation (must be consistent, typically multiples of 2)
+        if (indent % 2 != 0) {
+            fprintf(stderr, "Warning at line %d: Indent is not a multiple of 2 spaces\n", lineNum);
+        }
+        
+        // Determine current level based on indentation
+        int level = indent / 2;
+        
+        // Moving to a deeper level - store the new indent value
+        if (level > currentLevel) {
+            if (level != currentLevel + 1) {
+                fprintf(stderr, "Error at line %d: Indentation increased by more than one level\n", lineNum);
+                error = 1;
+                break;
+            }
+            indentLevels[level] = indent;
+        }
+        // Check if we are at a consistent indentation for this level
+        else if (level > 0 && indent != indentLevels[level]) {
+            fprintf(stderr, "Error at line %d: Inconsistent indentation for this level\n", lineNum);
+            error = 1;
+            break;
+        }
+        
+        currentLevel = level;
+    }
+    
+    fclose(file);
+    
+    if (inMultilineString) {
+        fprintf(stderr, "Error: Unclosed string literal in YAML\n");
+        error = 1;
+    }
+    
+    return !error;
 }
 
 // Function to serialize a ConfigItem to YAML
@@ -238,8 +566,32 @@ void serializeYAML(ConfigItem *item, FILE *file, int indent) {
     ConfigItem *child = item->child;
     while (child) {
         for (int i = 0; i < indent; ++i) fprintf(file, "  ");
+        
+        // For YAML, we need to properly quote strings with special characters
         if (child->value) {
-            fprintf(file, "%s: %s\n", child->key, child->value);
+            // Check if value needs quoting (contains special chars)
+            int needsQuotes = 0;
+            const char *specialChars = ":#{}[]&*!|>'\",";
+            for (const char *c = child->value; *c; c++) {
+                if (strchr(specialChars, *c) || *c <= ' ') {
+                    needsQuotes = 1;
+                    break;
+                }
+            }
+            
+            if (needsQuotes) {
+                fprintf(file, "%s: \"", child->key);
+                // Escape double quotes in the value
+                for (const char *c = child->value; *c; c++) {
+                    if (*c == '"') fprintf(file, "\\\"");
+                    else fprintf(file, "%c", *c);
+                }
+                fprintf(file, "\"\n");
+            }
+            
+            else {
+                fprintf(file, "%s: %s\n", child->key, child->value);
+            }
         }
         
         else {
@@ -292,11 +644,13 @@ int main(int argc, char *argv[]) {
     int transpileJSON = 0;
     int transpileYAML = 0;
     int loadAndInterpret = 0;
+    int checkDesign = 0;
+    int checkYAML = 0;
     char *loadFilename = NULL;
 
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
-            printf("%s [v1.0.0]\n", argv[0]);
+            printf("%s [v1.0.3]\n", argv[0]);
             return 0;
         }
         
@@ -308,6 +662,8 @@ int main(int argc, char *argv[]) {
             printf("   --author                   Display the author information.\n");
             printf("   --transpiler::json         Transpile to JSON format.\n");
             printf("   --transpiler::yaml         Transpile to YAML format.\n");
+            printf("   --checkDesignJSON          Check, fix, and format JSON output.\n");
+            printf("   --checkDesignYAML          Check and validate YAML output.\n");
             printf("   --load [filename]          Load and interpret the .v2 file.\n");
             printf("\nFor bug reporting instructions, please see:\n");
             printf("[https://github.com/magayaga/v2]\n");
@@ -315,7 +671,7 @@ int main(int argc, char *argv[]) {
         }
         
         else if (strcmp(argv[i], "--author") == 0) {
-            printf("Copyright (c) 2024 Cyril John Magayaga\n");
+            printf("Copyright (c) 2024-2025 Cyril John Magayaga\n");
             return 0;
         }
         
@@ -325,6 +681,14 @@ int main(int argc, char *argv[]) {
         
         else if (strcmp(argv[i], "--transpiler::yaml") == 0) {
             transpileYAML = 1;
+        }
+        
+        else if (strcmp(argv[i], "--checkDesignJSON") == 0) {
+            checkDesign = 1;
+        }
+        
+        else if (strcmp(argv[i], "--checkDesignYAML") == 0) {
+            checkYAML = 1;
         }
         
         else if (strcmp(argv[i], "--load") == 0) {
@@ -354,9 +718,18 @@ int main(int argc, char *argv[]) {
                 changeFileExtension(argv[i], jsonFilename, ".json");
                 FILE *jsonFile = fopen(jsonFilename, "w");
                 if (jsonFile) {
-                    serializeJSON(config, jsonFile);
+                    serializeJSON(config, jsonFile, 0, checkDesign);
                     fclose(jsonFile);
                     printf("Transpiled to JSON: %s\n", jsonFilename);
+                    
+                    // Validate JSON if checkDesign is enabled
+                    if (checkDesign) {
+                        if (checkDesignJSON(jsonFilename)) {
+                            printf("JSON validation passed for %s\n", jsonFilename);
+                        } else {
+                            printf("Warning: JSON validation failed for %s\n", jsonFilename);
+                        }
+                    }
                 }
                 
                 else {
@@ -372,6 +745,15 @@ int main(int argc, char *argv[]) {
                     serializeYAML(config, yamlFile, 0);
                     fclose(yamlFile);
                     printf("Transpiled to YAML: %s\n", yamlFilename);
+                    
+                    // Validate YAML if checkYAML is enabled
+                    if (checkYAML) {
+                        if (checkDesignYAML(yamlFilename)) {
+                            printf("YAML validation passed for %s\n", yamlFilename);
+                        } else {
+                            printf("Warning: YAML validation failed for %s\n", yamlFilename);
+                        }
+                    }
                 }
                 
                 else {
